@@ -1,13 +1,80 @@
-﻿import requests
+﻿import os
+import joblib
+import numpy as np
+import pandas as pd
 import streamlit as st
+
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+MODEL_PATH = "superkart_sales_forecast_pipeline.joblib"
+DATA_PATH = "SuperKart.csv"
+TARGET = "Product_Store_Sales_Total"
+
+
+def add_features(df):
+    df = df.copy()
+    df["Product_Sugar_Content"] = df["Product_Sugar_Content"].replace({"reg": "Regular"})
+    df["Store_Age_Years"] = 2026 - df["Store_Establishment_Year"]
+    df["Product_Id_Family"] = df["Product_Id"].astype(str).str[:2]
+    perishables = {"Fruits and Vegetables", "Dairy", "Meat", "Seafood", "Breakfast", "Breads"}
+    df["Product_Type_Category"] = np.where(df["Product_Type"].isin(perishables), "Perishables", "Non Perishables")
+    df["MRP_x_Allocated_Area"] = df["Product_MRP"] * df["Product_Allocated_Area"]
+    df["MRP_per_Weight"] = df["Product_MRP"] / df["Product_Weight"].replace(0, np.nan)
+    df["MRP_per_Weight"] = df["MRP_per_Weight"].fillna(df["Product_MRP"])
+    return df
+
+
+@st.cache_resource(show_spinner="Training SuperKart forecast model...")
+def load_model():
+    if os.path.exists(MODEL_PATH):
+        saved = joblib.load(MODEL_PATH)
+        return saved["pipeline"], saved.get("features", [])
+
+    data = pd.read_csv(DATA_PATH)
+    data = add_features(data)
+    X = data.drop(columns=[TARGET, "Product_Id", "Store_Establishment_Year"])
+    y = data[TARGET]
+
+    categorical_features = X.select_dtypes(include="object").columns.tolist()
+    numeric_features = X.select_dtypes(exclude="object").columns.tolist()
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", StandardScaler(), numeric_features),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
+        ]
+    )
+
+    model = RandomForestRegressor(
+        n_estimators=300,
+        min_samples_split=10,
+        min_samples_leaf=2,
+        max_features=1.0,
+        max_depth=None,
+        random_state=1,
+        n_jobs=-1,
+    )
+
+    pipeline = Pipeline([
+        ("preprocessor", preprocessor),
+        ("model", model),
+    ])
+
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.30, random_state=1)
+    pipeline.fit(X_train, y_train)
+    joblib.dump({"pipeline": pipeline, "features": X.columns.tolist()}, MODEL_PATH)
+    return pipeline, X.columns.tolist()
+
 
 st.set_page_config(page_title="SuperKart Sales Forecast", layout="centered")
 st.title("SuperKart Sales Forecast")
+st.caption("Forecast product-store sales using SuperKart product, pricing, display, and outlet details.")
 
-backend_url = st.text_input(
-    "Backend prediction endpoint",
-    "https://YOUR-RENDER-BACKEND.onrender.com/predict",
-)
+model, expected_features = load_model()
 
 with st.form("prediction_form"):
     product_id = st.text_input("Product ID", "FD123")
@@ -31,7 +98,7 @@ with st.form("prediction_form"):
     submitted = st.form_submit_button("Predict sales")
 
 if submitted:
-    payload = {
+    input_df = pd.DataFrame([{
         "Product_Id": product_id,
         "Product_Weight": product_weight,
         "Product_Sugar_Content": sugar,
@@ -43,12 +110,8 @@ if submitted:
         "Store_Size": store_size,
         "Store_Location_City_Type": city_type,
         "Store_Type": store_type,
-    }
-
-    try:
-        response = requests.post(backend_url, json=payload, timeout=30)
-        response.raise_for_status()
-        prediction = response.json()["predictions"][0]
-        st.metric("Forecasted product-store sales", f"${prediction:,.2f}")
-    except Exception as exc:
-        st.error(f"Prediction request failed: {exc}")
+    }])
+    input_df = add_features(input_df).drop(columns=["Product_Id", "Store_Establishment_Year"])
+    input_df = input_df[expected_features]
+    prediction = model.predict(input_df)[0]
+    st.metric("Forecasted product-store sales", f"${prediction:,.2f}")
