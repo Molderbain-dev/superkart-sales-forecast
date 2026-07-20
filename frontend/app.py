@@ -13,7 +13,14 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_PATH = APP_DIR / "superkart_sales_forecast_pipeline.joblib"
-DATA_PATH = APP_DIR / "SuperKart.csv"
+DATA_CANDIDATES = [
+    APP_DIR / "SuperKart.csv",
+    APP_DIR.parent / "frontend" / "SuperKart.csv",
+    APP_DIR.parent / "backend" / "SuperKart.csv",
+    Path.cwd() / "SuperKart.csv",
+    Path.cwd() / "frontend" / "SuperKart.csv",
+    Path.cwd() / "backend" / "SuperKart.csv",
+]
 TARGET = "Product_Store_Sales_Total"
 
 
@@ -36,7 +43,11 @@ def load_model():
         saved = joblib.load(MODEL_PATH)
         return saved["pipeline"], saved.get("features", [])
 
-    data = pd.read_csv(DATA_PATH)
+    data_path = next((path for path in DATA_CANDIDATES if path.exists()), None)
+    if data_path is None:
+        st.error("SuperKart.csv was not found. Checked: " + ", ".join(str(path) for path in DATA_CANDIDATES))
+        st.stop()
+    data = pd.read_csv(data_path)
     data = data.sample(n=min(len(data), 5000), random_state=1)
     data = add_features(data)
     X = data.drop(columns=[TARGET, "Product_Id", "Store_Establishment_Year"])
@@ -118,6 +129,7 @@ if submitted:
     input_df = input_df[expected_features]
     prediction = model.predict(input_df)[0]
     st.metric("Forecasted product-store sales", f"${prediction:,.2f}")
+
 
 
 
