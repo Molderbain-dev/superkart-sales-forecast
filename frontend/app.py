@@ -35,6 +35,7 @@ def load_model():
         return saved["pipeline"], saved.get("features", [])
 
     data = pd.read_csv(DATA_PATH)
+    data = data.sample(n=min(len(data), 5000), random_state=1)
     data = add_features(data)
     X = data.drop(columns=[TARGET, "Product_Id", "Store_Establishment_Year"])
     y = data[TARGET]
@@ -50,13 +51,13 @@ def load_model():
     )
 
     model = RandomForestRegressor(
-        n_estimators=300,
+        n_estimators=80,
         min_samples_split=10,
         min_samples_leaf=2,
         max_features=1.0,
         max_depth=None,
         random_state=1,
-        n_jobs=-1,
+        n_jobs=1,
     )
 
     pipeline = Pipeline([
@@ -115,3 +116,5 @@ if submitted:
     input_df = input_df[expected_features]
     prediction = model.predict(input_df)[0]
     st.metric("Forecasted product-store sales", f"${prediction:,.2f}")
+
+
