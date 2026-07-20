@@ -1,4 +1,5 @@
 ﻿import os
+from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
@@ -10,8 +11,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-MODEL_PATH = "superkart_sales_forecast_pipeline.joblib"
-DATA_PATH = "SuperKart.csv"
+APP_DIR = Path(__file__).resolve().parent
+MODEL_PATH = APP_DIR / "superkart_sales_forecast_pipeline.joblib"
+DATA_PATH = APP_DIR / "SuperKart.csv"
 TARGET = "Product_Store_Sales_Total"
 
 
@@ -116,5 +118,6 @@ if submitted:
     input_df = input_df[expected_features]
     prediction = model.predict(input_df)[0]
     st.metric("Forecasted product-store sales", f"${prediction:,.2f}")
+
 
 
