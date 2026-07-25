@@ -47,7 +47,12 @@ EXPECTED_FEATURES = [
 def add_features(df):
     df = df.copy()
     df["Product_Sugar_Content"] = df["Product_Sugar_Content"].replace({"reg": "Regular"})
+    df["Product_Id_Prefix"] = df["Product_Id"].astype(str).str[:2]
     df["Product_Id_Family"] = df["Product_Id"].astype(str).str[:2]
+    df["Product_Id_Family"] = df["Product_Id_Family"].map({"FD": "Food", "DR": "Drink", "NC": "Non-Consumable"}).fillna("Other")
+    store_year_map = {"OUT001": 1987, "OUT002": 1998, "OUT003": 1999, "OUT004": 2009}
+    df["Store_Establishment_Year"] = df["Store_Id"].map(store_year_map)
+    df["Store_Age_Years"] = 2026 - df["Store_Establishment_Year"]
     perishables = {"Fruits and Vegetables", "Dairy", "Meat", "Seafood", "Breakfast", "Breads"}
     df["Product_Type_Category"] = np.where(df["Product_Type"].isin(perishables), "Perishables", "Non Perishables")
     df["MRP_x_Allocated_Area"] = df["Product_MRP"] * df["Product_Allocated_Area"]
@@ -145,6 +150,9 @@ if submitted:
         "Store_Type": store_type,
     }])
     input_df = add_features(input_df).drop(columns=["Product_Id"])
+    for feature in expected_features:
+        if feature not in input_df.columns:
+            input_df[feature] = 0
     input_df = input_df[expected_features]
     prediction = model.predict(input_df)[0]
     st.metric("Forecasted product-store sales", f"${prediction:,.2f}")
